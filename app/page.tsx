@@ -86,7 +86,7 @@ export default function Page(){
           setDuration(Math.ceil(last.start+last.dur+5));
         } else {
           setSegments([]);
-          alert("No captions found for this YouTube video (owner disabled captions). Try uploading the video file + use Groq whisper (free) for transcription, or click 'Demo transcript' to test.");
+          alert("No captions found for this YouTube video (owner disabled captions). Try 'Auto Transcribe with Groq' below (uses your free Groq key to transcribe audio directly), or click 'Demo transcript' to test.");
         }
       }catch(e:any){ alert(e.message) }
       setTranscriptLoading(false);
@@ -105,6 +105,23 @@ export default function Page(){
     } else if(file){
       alert("For uploaded files, add a free Groq API key (groq.com) to auto-transcribe, or use 'Demo Transcript' to test clipping without it.");
     }
+  };
+
+  const autoTranscribeYoutube = async()=>{
+    if(!ytId || !ytUrl){ alert("Paste a YouTube URL first"); return; }
+    if(!apiKey || provider==="heuristic"){ alert("Select Groq as provider and paste your free gsk_... key (console.groq.com) to auto-transcribe YouTube without captions. It's free!"); return; }
+    setTranscriptLoading(true);
+    try{
+      const r = await fetch("/api/transcribe-youtube",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ url: ytUrl, apiKey, provider })});
+      const j = await r.json();
+      if(!r.ok) throw new Error(j.error || "failed");
+      if(j.segments?.length){
+        setSegments(j.segments);
+        if(j.duration) setDuration(Math.ceil(j.duration));
+        else if(j.segments.length) setDuration(Math.ceil(j.segments[j.segments.length-1].start + j.segments[j.segments.length-1].dur + 2));
+      } else alert("No transcript returned");
+    }catch(e:any){ alert("Auto-transcribe failed: "+e.message+"\nFallback: download via cobalt.tools and upload, or use Demo transcript."); }
+    setTranscriptLoading(false);
   };
 
   const SAMPLE_VIDEO = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
@@ -421,7 +438,8 @@ export default function Page(){
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={createDemoTranscript} className="text-xs px-3 py-2 rounded-full bg-white/5 border border-white/10 hover:bg-white/10">✨ Use demo transcript (test without captions)</button>
                   <button onClick={loadSampleVideo} className="text-xs px-3 py-2 rounded-full bg-emerald-600 text-white font-bold hover:bg-emerald-500">🎬 Load Sample Video (test export instantly)</button>
-                  <span className="text-xs text-zinc-500 py-2">YouTube iframe can&apos;t be exported — use Sample or Upload</span>
+                  <button onClick={autoTranscribeYoutube} disabled={transcriptLoading} className="text-xs px-3 py-2 rounded-full bg-violet-600 text-white font-bold hover:bg-violet-500 disabled:opacity-40 flex items-center gap-1">{transcriptLoading?<Loader2 className="w-3 h-3 animate-spin"/>:<Wand2 className="w-3 h-3"/>} Auto-Transcribe YouTube with Groq (free, no captions needed)</button>
+                  <span className="text-xs text-zinc-500 py-2">YouTube iframe can&apos;t be exported — use Sample or Upload for export</span>
                 </div>
               </div>
             ) : (
