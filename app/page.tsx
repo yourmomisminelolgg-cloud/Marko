@@ -141,6 +141,28 @@ export default function Page(){
     }
     setSegments(segs);
     if(!duration || duration<10) setDuration(120);
+    return segs;
+  };
+
+  const oneClickDemo = async()=>{
+    // full auto demo: sample video + transcript + clips
+    try{ await loadSampleVideo(); }catch{}
+    setTimeout(async()=>{
+      const segs = createDemoTranscript();
+      // auto generate clips after transcript
+      setTimeout(async()=>{
+        setAnalyzing(true);
+        try{
+          const r=await fetch("/api/analyze",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ segments: segs, duration: 120, count: clipCount, targetLen: clipLen, provider: "heuristic" })});
+          const j=await r.json();
+          setClips(j.clips||[]);
+          setActiveClip(0);
+          // auto play first clip
+          setTimeout(()=>{ videoRef.current?.play().then(()=>setIsPlayingClip(true)).catch(()=>{}); }, 400);
+        }catch(e:any){ alert(e.message)}
+        setAnalyzing(false);
+      }, 400);
+    }, 800);
   };
 
   const analyze = async()=>{
@@ -373,6 +395,7 @@ export default function Page(){
             <div className="flex items-center gap-2 text-violet-300 text-xs font-bold tracking-widest mb-2"><Sparkles className="w-4 h-4"/> TURN LONG VIDEO → VIRAL SHORTS</div>
             <h1 className="text-[30px] md:text-[40px] font-black leading-[0.95] tracking-tight">Clip the best parts<br/> <span className="gradient-text">add captions & reframe</span><br/> in one click.</h1>
             <p className="text-zinc-400 mt-3 text-[15px] leading-relaxed">Paste a YouTube link or upload an mp4. AI finds hooks, adds <b className="text-zinc-200">HORMOZI-style captions</b> and auto-reframes to 9:16 for TikTok / Reels / Shorts. Runs <b className="text-zinc-200">100% in your browser</b> — free API keys optional.</p>
+            <button onClick={oneClickDemo} className="mt-4 w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 font-black flex items-center justify-center gap-2 hover:from-emerald-500 hover:to-teal-500 shadow-lg shadow-emerald-900/30">⚡ One-Click Demo — Load Sample + Generate Clips (test export now)</button>
 
             <div className="flex gap-2 mt-5">
               <button onClick={()=>setInputMode("youtube")} className={cn("flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 border", inputMode==="youtube"?"bg-white text-black border-white":"glass text-zinc-300")}> <Youtube className="w-5 h-5"/> YouTube URL</button>
