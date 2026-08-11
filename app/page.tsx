@@ -107,20 +107,40 @@ export default function Page(){
     }
   };
 
-  const useDemoTranscript = ()=>{
+  const SAMPLE_VIDEO = "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+  const loadSampleVideo = async()=>{
+    try{
+      setInputMode("upload");
+      // fetch as blob to avoid CORS issues on canvas export
+      const r = await fetch(SAMPLE_VIDEO);
+      const b = await r.blob();
+      const f = new File([b], "sample-bunny.mp4", {type:"video/mp4"});
+      setFile(f);
+      // auto demo transcript for sample
+      setTimeout(createDemoTranscript, 600);
+    }catch(e:any){
+      // fallback: set direct src if fetch fails (may taint canvas but preview still works)
+      setInputMode("upload");
+      setVideoSrc(SAMPLE_VIDEO);
+      createDemoTranscript();
+    }
+  };
+
+  const createDemoTranscript = ()=>{
     // generate mock transcript for demo
-    const dur = duration || 300;
+    const dur = duration || 120;
     const topics = ["The secret nobody tells you about growth","Why most podcasts fail","How I made my first million","The one habit that changed everything","Stop doing this if you want to go viral","AI is replacing your job but here's how to win"];
     const segs:Segment[]=[];
     let t=0; let idx=0;
-    while(t<dur-2){
+    const targetDur = duration>10 ? duration : 120;
+    while(t<targetDur-2){
       const txt = idx%4===0 ? topics[idx%topics.length] + " — you need to hear this." : idx%5===0 ? "Wait, what if everything you know is wrong? Let me explain." : idx%3===0 ? "And that's when it hit me — the most insane thing happened." : `This is sentence ${idx+1} of the podcast talking about mindset, growth and virality.`;
       const d = 2 + Math.random()*2.5;
       segs.push({text: txt, start: t, dur: d});
       t+=d+0.2; idx++;
     }
     setSegments(segs);
-    if(!duration) setDuration(dur);
+    if(!duration || duration<10) setDuration(120);
   };
 
   const analyze = async()=>{
@@ -149,7 +169,9 @@ export default function Page(){
     if(!ctx) return;
     let raf:number;
     const draw=()=>{
-      if(!v || v.paused || v.ended){ raf=requestAnimationFrame(draw); return; }
+      if(!v || !c){ raf=requestAnimationFrame(draw); return; }
+      // always draw current frame so preview shows even when paused
+      if(v.readyState < 2){ raf=requestAnimationFrame(draw); return; }
       const clip=clips[activeClip];
       // canvas size based on aspect
       const W=c.width, H=c.height;
@@ -237,8 +259,14 @@ export default function Page(){
   },[aspect]);
 
   const handleExport = async(idx:number)=>{
-    const clip=clips[idx]; if(!clip || !videoRef.current) return;
-    if(!file){ alert("Export works fully for uploaded video files (browser records canvas). For YouTube, upload the same mp4 to enable one-click MP4 export. For now we’ll export a preview recording of the in-browser playback."); }
+    const clip=clips[idx]; 
+    if(!clip){ alert("Generate clips first! Click 'Generate Viral Clips'"); return; }
+    if(!videoRef.current || !videoSrc){
+      // YouTube mode - can't capture iframe
+      const goSample = confirm("YouTube videos can't be exported directly (Google blocks it). Click OK to load Sample Video to test export instantly, or Cancel to upload your MP4 instead.\n\nFor your YouTube URL: download it with yt-dlp locally then drag the MP4 here for real export.");
+      if(goSample) loadSampleVideo();
+      return;
+    }
     setExporting(idx);
     try{
       const v=videoRef.current;
@@ -367,9 +395,10 @@ export default function Page(){
                     </div>
                   </div>
                 )}
-                <div className="flex gap-2">
-                  <button onClick={useDemoTranscript} className="text-xs px-3 py-2 rounded-full bg-white/5 border border-white/10 hover:bg-white/10">✨ Use demo transcript (test without captions)</button>
-                  <span className="text-xs text-zinc-500 py-2">or enable captions on YouTube & retry</span>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={createDemoTranscript} className="text-xs px-3 py-2 rounded-full bg-white/5 border border-white/10 hover:bg-white/10">✨ Use demo transcript (test without captions)</button>
+                  <button onClick={loadSampleVideo} className="text-xs px-3 py-2 rounded-full bg-emerald-600 text-white font-bold hover:bg-emerald-500">🎬 Load Sample Video (test export instantly)</button>
+                  <span className="text-xs text-zinc-500 py-2">YouTube iframe can&apos;t be exported — use Sample or Upload</span>
                 </div>
               </div>
             ) : (
@@ -382,9 +411,10 @@ export default function Page(){
                   <Upload className="w-4 h-4 mr-2"/> Choose file
                 </label>
                 {file && <div className="mt-3 text-sm text-emerald-400 flex items-center justify-center gap-2"><Check className="w-4 h-4"/> {file.name} — {(file.size/1024/1024).toFixed(1)} MB</div>}
-                <div className="mt-4 flex gap-2 justify-center">
+                <div className="mt-4 flex gap-2 justify-center flex-wrap">
                   <button onClick={fetchTranscript} className="px-4 py-2 rounded-full bg-violet-600 text-white font-bold text-sm">Transcribe via Groq Whisper (free)</button>
-                  <button onClick={useDemoTranscript} className="px-4 py-2 rounded-full bg-white/10 border border-white/10 text-sm">Demo transcript</button>
+                  <button onClick={createDemoTranscript} className="px-4 py-2 rounded-full bg-white/10 border border-white/10 text-sm">Demo transcript</button>
+                  <button onClick={loadSampleVideo} className="px-4 py-2 rounded-full bg-emerald-600 text-white font-bold text-sm">🎬 Sample Video</button>
                 </div>
               </div>
             )}
@@ -488,8 +518,9 @@ export default function Page(){
               <div className="bg-black p-4 flex justify-center">
                 <div className="relative bg-zinc-900 rounded-xl overflow-hidden shadow-2xl" style={{ width: aspect==="9:16" ? 320 : aspect==="1:1" ? 360 : 480, aspectRatio: aspect==="9:16"? "9/16" : aspect==="1:1"? "1/1":"16/9" }}>
                   {/* hidden video source */}
+                  {/* keep video in DOM but invisible so canvas can capture */}
                   {videoSrc ? (
-                    <video ref={videoRef} src={videoSrc} crossOrigin="anonymous" playsInline muted={false} controls={false} onLoadedMetadata={e=>setDuration(e.currentTarget.duration)} className="hidden"/>
+                    <video ref={videoRef} src={videoSrc} crossOrigin="anonymous" playsInline muted controls={false} onLoadedMetadata={e=>setDuration(e.currentTarget.duration)} className="absolute -top-[9999px] left-0 w-px h-px opacity-0 pointer-events-none" />
                   ) : ytId ? (
                     <>
                       <iframe className="absolute inset-0 w-full h-full" src={`https://www.youtube.com/embed/${ytId}?enablejsapi=1`} allow="autoplay; encrypted-media" />
